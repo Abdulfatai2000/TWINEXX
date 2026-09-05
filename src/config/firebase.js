@@ -3,14 +3,15 @@ import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/aut
 import { getFirestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Placeholder Firebase config - Replace with actual config from Firebase Console
+// Firebase config for twinix-1dd4f
 const firebaseConfig = {
-  apiKey: "PLACEHOLDER_API_KEY",
-  authDomain: "PLACEHOLDER_AUTH_DOMAIN",
-  projectId: "PLACEHOLDER_PROJECT_ID",
-  storageBucket: "PLACEHOLDER_STORAGE_BUCKET",
-  messagingSenderId: "PLACEHOLDER_MESSAGING_SENDER_ID",
-  appId: "PLACEHOLDER_APP_ID"
+  apiKey: "AIzaSyBk1xxNmuqY-bzGd0ZNcPn3e6EiDEZAaKA",
+  authDomain: "twinix-1dd4f.firebaseapp.com",
+  projectId: "twinix-1dd4f",
+  storageBucket: "twinix-1dd4f.firebasestorage.app",
+  messagingSenderId: "575136134586",
+  appId: "1:575136134586:web:5c33fecf06a3486b799983",
+  measurementId: "G-GWX9H8REX5"
 };
 
 // Initialize Firebase
