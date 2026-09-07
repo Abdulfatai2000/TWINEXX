@@ -3,6 +3,9 @@ const router = express.Router();
 
 const { authenticate, ensureUser } = require('../utils/auth');
 const Task = require('../models/Task');
+const { SKIP_DB_TEMP } = require('../config/flags');
+
+let mockTasks = [];
 
 // All task routes require authentication
 router.use(authenticate);
@@ -12,6 +15,13 @@ router.use(authenticate);
 router.get('/', async (req, res, next) => {
   try {
     const user = await ensureUser(req.clerkUserId);
+    
+    if (SKIP_DB_TEMP) {
+      const userTasks = mockTasks
+        .filter(t => t.ownerId.toString() === user._id.toString())
+        .sort((a, b) => b.createdAt - a.createdAt);
+      return res.json(userTasks);
+    }
     const tasks = await Task.find({ ownerId: user._id })
       .sort({ createdAt: -1 })
       .lean();
@@ -43,6 +53,20 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'Task title is required' });
     }
 
+    if (SKIP_DB_TEMP) {
+      const task = {
+        id: 'mock-task-' + Date.now(),
+        ownerId: user._id,
+        title: title.trim(),
+        description: description ? String(description).trim() : '',
+        dueDate: dueDate ? new Date(dueDate) : null,
+        status: 'pending',
+        createdAt: new Date(),
+      };
+      mockTasks.push(task);
+      return res.status(201).json(task);
+    }
+
     const task = await Task.create({
       ownerId: user._id,
       title: title.trim(),
@@ -72,6 +96,21 @@ router.patch('/:id', async (req, res, next) => {
     const user = await ensureUser(req.clerkUserId);
     const taskId = req.params.id;
     const { title, description, dueDate, status } = req.body;
+
+    if (SKIP_DB_TEMP) {
+      const task = mockTasks.find(t => t.id === taskId);
+      if (!task) return res.status(404).json({ error: 'Task not found' });
+      if (task.ownerId.toString() !== user._id.toString()) return res.status(403).json({ error: 'Forbidden' });
+      
+      if (title !== undefined) task.title = String(title).trim();
+      if (description !== undefined) task.description = String(description).trim();
+      if (dueDate !== undefined) task.dueDate = dueDate ? new Date(dueDate) : null;
+      if (status !== undefined) {
+        if (!['pending', 'done'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+        task.status = status;
+      }
+      return res.json(task);
+    }
 
     const task = await Task.findById(taskId);
     if (!task) {
@@ -115,6 +154,15 @@ router.delete('/:id', async (req, res, next) => {
   try {
     const user = await ensureUser(req.clerkUserId);
     const taskId = req.params.id;
+
+    if (SKIP_DB_TEMP) {
+      const taskIndex = mockTasks.findIndex(t => t.id === taskId);
+      if (taskIndex === -1) return res.status(404).json({ error: 'Task not found' });
+      if (mockTasks[taskIndex].ownerId.toString() !== user._id.toString()) return res.status(403).json({ error: 'Forbidden' });
+      
+      mockTasks.splice(taskIndex, 1);
+      return res.json({ success: true });
+    }
 
     const task = await Task.findById(taskId);
     if (!task) {
