@@ -68,7 +68,6 @@ router.get('/', async (req, res, next) => {
 // ── GET /api/connections/pending ───────────────────────────────────────────
 // Returns pending incoming requests for the current user (as target)
 router.get('/pending', async (req, res, next) => {
-router.get('/pending', async (req, res, next) => {
   try {
     const user = await ensureUser(req.clerkUserId);
 
