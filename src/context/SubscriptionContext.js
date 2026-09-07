@@ -29,7 +29,7 @@ export const SubscriptionProvider = ({ children }) => {
     restorePurchases,
   } = useRevenueCat();
 
-  // Firestore-backed isPremium (real-time, persists across sessions)
+  // MongoDB-backed isPremium (via Express API)
   const { isPremium, expiresAt, loading: premiumLoading } = useIsPremium();
 
   return (

@@ -4,8 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActivityIndicator, View } from 'react-native';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from './src/config/firebase';
+import { ClerkProvider, useAuth, useSession } from '@clerk/clerk-expo';
 import { ListTodo, KeyRound, Crown } from 'lucide-react-native';
 
 // Onboarding & Auth Screens
@@ -24,6 +23,9 @@ import PaywallScreen from './src/screens/PaywallScreen';
 
 // Subscription context
 import { SubscriptionProvider } from './src/context/SubscriptionContext';
+
+import { CLERK_PUBLISHABLE_KEY } from './src/config';
+import { setAuthToken } from './src/utils/api';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -73,9 +75,6 @@ const MainTabs = () => (
 );
 
 // ── Root App Stack (tabs + modal screens) ─────────────────────────────────
-// Paywall is a full-screen modal pushed on top of any tab.
-// Using a root Stack avoids nesting issues when navigating to Paywall
-// from multiple places (e.g., Account tab, future partner pairing gate).
 const AppStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="MainTabs" component={MainTabs} />
@@ -90,14 +89,63 @@ const AppStack = () => (
   </Stack.Navigator>
 );
 
+// ── Token Syncer ──────────────────────────────────────────────────────────
+// Fetches the Clerk JWT and feeds it to the API client.
+const TokenSyncer = ({ children }) => {
+  const { session, isSignedIn } = useSession();
+
+  useEffect(() => {
+    let mounted = true;
+
+    const syncToken = async () => {
+      if (!isSignedIn || !session) {
+        setAuthToken(null);
+        return;
+      }
+      try {
+        const token = await session.getToken();
+        if (mounted) {
+          setAuthToken(token);
+        }
+      } catch (e) {
+        console.error('TokenSyncer: Error getting token:', e);
+        if (mounted) {
+          setAuthToken(null);
+        }
+      }
+    };
+
+    syncToken();
+
+    return () => {
+      mounted = false;
+    };
+  }, [session, isSignedIn]);
+
+  return children;
+};
+
+// ── Auth State Handler ────────────────────────────────────────────────────
+const AuthStateHandler = ({ initialAuthRoute }) => {
+  const { isSignedIn, isLoaded } = useAuth();
+
+  if (!isLoaded) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' }}>
+        <ActivityIndicator size="large" color="#000000" />
+      </View>
+    );
+  }
+
+  return isSignedIn ? <AppStack /> : <AuthStack initialRouteName={initialAuthRoute} />;
+};
+
 // ── Root Component ────────────────────────────────────────────────────────
 export default function App() {
   const [isReady, setIsReady] = useState(false);
   const [initialAuthRoute, setInitialAuthRoute] = useState('WelcomeSlides');
-  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    // Check onboarding status
     const checkOnboardingStatus = async () => {
       try {
         const completed = await AsyncStorage.getItem('@twinix_onboarding_completed');
@@ -114,15 +162,6 @@ export default function App() {
     checkOnboardingStatus();
   }, []);
 
-  useEffect(() => {
-    // Listen for Firebase Auth state changes
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-    });
-
-    return unsubscribe;
-  }, []);
-
   if (!isReady) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' }}>
@@ -132,18 +171,14 @@ export default function App() {
   }
 
   return (
-    // SubscriptionProvider wraps the entire authenticated app so any screen
-    // can call useSubscription() without prop-drilling.
-    // It is intentionally placed outside NavigationContainer so the RevenueCat
-    // SDK initialises as early as possible (before any screen mounts).
-    <SubscriptionProvider>
-      <NavigationContainer>
-        {user ? (
-          <AppStack />
-        ) : (
-          <AuthStack initialRouteName={initialAuthRoute} />
-        )}
-      </NavigationContainer>
-    </SubscriptionProvider>
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+      <TokenSyncer>
+        <SubscriptionProvider>
+          <NavigationContainer>
+            <AuthStateHandler initialAuthRoute={initialAuthRoute} />
+          </NavigationContainer>
+        </SubscriptionProvider>
+      </TokenSyncer>
+    </ClerkProvider>
   );
 }

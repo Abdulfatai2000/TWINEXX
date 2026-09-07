@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# TWINEX Backend — Render Deployment Config
+# ─────────────────────────────────────────────────────────────────────────────
+# Place this file in the root of the server/ directory (or the repo root).
+# In the Render dashboard: create a "Web Service" and point it at this repo.
+# Render will read this file and deploy the Express server.
+
+services:
+  - type: web
+    name: twinex-server
+    env: node
+    plan: free
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000

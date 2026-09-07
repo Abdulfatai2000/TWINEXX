@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../config/firebase';
+import { useSignIn } from '@clerk/clerk-expo';
 import InputField from '../components/InputField';
 import PrimaryButton from '../components/PrimaryButton';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LoginScreen = ({ navigation }) => {
+  const { signIn } = useSignIn();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,14 +22,26 @@ const LoginScreen = ({ navigation }) => {
     setError('');
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // Navigation will be handled by auth listener in App.js
+      const result = await signIn.create({
+        identifier: email,
+        password,
+      });
+
+      if (result.status === 'complete') {
+        // Session is established; ClerkProvider will re-render App.js
+        // and the AuthStateHandler will switch to AppStack.
+      } else {
+        // E.g. requires MFA or email verification — handle if needed
+        console.warn('Login incomplete:', result.status);
+      }
     } catch (e) {
       console.error('Login error', e);
-      if (e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+      // Clerk error codes differ from Firebase; show a generic message
+      if (e.errors?.[0]?.code === 'form_identifier_unrecognized' ||
+          e.errors?.[0]?.code === 'form_password_incorrect') {
         setError('Invalid email or password.');
       } else {
-        setError(e.message || 'Failed to log in.');
+        setError(e.errors?.[0]?.message || e.message || 'Failed to log in.');
       }
     } finally {
       setLoading(false);
@@ -49,8 +61,8 @@ const LoginScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.content}>
@@ -77,9 +89,9 @@ const LoginScreen = ({ navigation }) => {
           />
 
           <View style={styles.buttonContainer}>
-            <PrimaryButton 
-              title={loading ? "Logging in..." : "Log In"} 
-              onPress={handleLogin} 
+            <PrimaryButton
+              title={loading ? "Logging in..." : "Log In"}
+              onPress={handleLogin}
             />
           </View>
 

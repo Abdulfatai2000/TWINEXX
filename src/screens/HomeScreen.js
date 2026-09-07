@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, FlatList, TouchableOpacity, Modal, TextInput } from 'react-native';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, deleteDoc, serverTimestamp, orderBy } from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
+import { View, Text, StyleSheet, SafeAreaView, FlatList, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { taskAPI } from '../utils/api';
 import TaskItem from '../components/TaskItem';
 import PrimaryButton from '../components/PrimaryButton';
 import { Plus } from 'lucide-react-native';
@@ -11,67 +10,87 @@ const HomeScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDesc, setNewTaskDesc] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    const q = query(
-      collection(db, 'tasks'),
-      where('ownerId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const tasksData = [];
-      querySnapshot.forEach((doc) => {
-        tasksData.push({ id: doc.id, ...doc.data() });
-      });
-      setTasks(tasksData);
-    });
-
-    return () => unsubscribe();
+    const fetchTasks = async () => {
+      try {
+        const res = await taskAPI.list();
+        setTasks(res.data);
+      } catch (error) {
+        console.error('HomeScreen: Error fetching tasks:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchTasks();
   }, []);
 
   const handleAddTask = async () => {
     if (!newTaskTitle.trim()) return;
 
     try {
-      const user = auth.currentUser;
-      await addDoc(collection(db, 'tasks'), {
-        ownerId: user.uid,
+      const res = await taskAPI.create({
         title: newTaskTitle.trim(),
         description: newTaskDesc.trim(),
-        status: 'pending',
-        dueDate: null,
-        createdAt: serverTimestamp(),
       });
+      setTasks((prev) => [res.data, ...prev]);
       setNewTaskTitle('');
       setNewTaskDesc('');
       setModalVisible(false);
     } catch (error) {
-      console.error("Error adding document: ", error);
+      console.error('HomeScreen: Error adding task:', error);
+      Alert.alert('Error', 'Could not add task. Please try again.');
     }
   };
 
   const handleToggleStatus = async (taskId, currentStatus) => {
     try {
       const newStatus = currentStatus === 'done' ? 'pending' : 'done';
-      await updateDoc(doc(db, 'tasks', taskId), {
-        status: newStatus
-      });
+      const res = await taskAPI.update(taskId, { status: newStatus });
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? res.data : t))
+      );
     } catch (error) {
-      console.error("Error updating document: ", error);
+      console.error('HomeScreen: Error toggling task:', error);
     }
   };
 
   const handleDeleteTask = async (taskId) => {
-    try {
-      await deleteDoc(doc(db, 'tasks', taskId));
-    } catch (error) {
-      console.error("Error deleting document: ", error);
-    }
+    Alert.alert(
+      'Delete Task',
+      'Are you sure you want to delete this task?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await taskAPI.remove(taskId);
+              setTasks((prev) => prev.filter((t) => t.id !== taskId));
+            } catch (error) {
+              console.error('HomeScreen: Error deleting task:', error);
+              Alert.alert('Error', 'Could not delete task. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <Text style={styles.title}>My Tasks</Text>
+        </View>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#000000" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -86,10 +105,10 @@ const HomeScreen = () => {
         data={tasks}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <TaskItem 
-            task={item} 
-            onToggleStatus={handleToggleStatus} 
-            onDelete={handleDeleteTask} 
+          <TaskItem
+            task={item}
+            onToggleStatus={handleToggleStatus}
+            onDelete={handleDeleteTask}
           />
         )}
         contentContainerStyle={styles.listContent}
@@ -109,7 +128,7 @@ const HomeScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>New Task</Text>
-            
+
             <TextInput
               style={styles.input}
               placeholder="Task Title"
@@ -117,7 +136,7 @@ const HomeScreen = () => {
               onChangeText={setNewTaskTitle}
               autoFocus
             />
-            
+
             <TextInput
               style={[styles.input, styles.textArea]}
               placeholder="Description (Optional)"
@@ -131,9 +150,9 @@ const HomeScreen = () => {
               <TouchableOpacity style={styles.cancelButton} onPress={() => setModalVisible(false)}>
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <PrimaryButton 
-                title="Add Task" 
-                onPress={handleAddTask} 
+              <PrimaryButton
+                title="Add Task"
+                onPress={handleAddTask}
                 style={styles.submitButton}
               />
             </View>
@@ -167,6 +186,11 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  centered: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -6,64 +6,36 @@ import {
   SafeAreaView,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
-import {
-  doc,
-  getDoc,
-  collection,
-  query,
-  where,
-  onSnapshot,
-} from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
-import { auth, db } from '../config/firebase';
-import PinDisplay from '../components/PinDisplay';
+import { useAuth } from '@clerk/clerk-expo';
 import { LogOut, UserPlus, Users, Bell } from 'lucide-react-native';
+import PinDisplay from '../components/PinDisplay';
+import { authAPI } from '../utils/api';
 
 const MyPinScreen = ({ navigation }) => {
+  const { signOut } = useAuth();
   const [pin, setPin] = useState('');
-  const [pendingCount, setPendingCount] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  // Fetch this user's PIN
+  // Fetch this user's PIN from MongoDB via the API
   useEffect(() => {
     const fetchPin = async () => {
-      const user = auth.currentUser;
-      if (user) {
-        try {
-          const docRef = doc(db, 'users', user.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            setPin(docSnap.data().pin);
-          }
-        } catch (error) {
-          console.error('MyPinScreen: Error fetching PIN:', error);
-        }
+      try {
+        const res = await authAPI.me();
+        setPin(res.data.pin);
+      } catch (error) {
+        console.error('MyPinScreen: Error fetching PIN:', error);
+      } finally {
+        setLoading(false);
       }
     };
     fetchPin();
   }, []);
 
-  // Real-time listener for pending incoming requests (drives the badge count)
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    const q = query(
-      collection(db, 'connections'),
-      where('target_id', '==', user.uid),
-      where('status', '==', 'pending')
-    );
-
-    const unsubscribe = onSnapshot(q, (snap) => {
-      setPendingCount(snap.size);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await signOut();
     } catch (error) {
       console.error('MyPinScreen: Error signing out:', error);
     }
@@ -86,10 +58,12 @@ const MyPinScreen = ({ navigation }) => {
           Share this with someone who wants to connect with you.
           They'll enter it and you'll become their mentor.
         </Text>
-        {pin ? (
+        {loading ? (
+          <ActivityIndicator size="small" color="#000000" style={{ marginTop: 12 }} />
+        ) : pin ? (
           <PinDisplay pin={pin} />
         ) : (
-          <ActivityIndicator size="small" color="#000000" style={{ marginTop: 12 }} />
+          <Text style={styles.noPin}>No PIN available</Text>
         )}
       </View>
 
@@ -97,7 +71,6 @@ const MyPinScreen = ({ navigation }) => {
       <View style={styles.actionsSection}>
         <Text style={styles.actionsLabel}>Partner Tools</Text>
 
-        {/* Connect with a Partner */}
         <TouchableOpacity
           style={styles.actionCard}
           onPress={() => navigation.navigate('Connect')}
@@ -116,12 +89,11 @@ const MyPinScreen = ({ navigation }) => {
           <Text style={styles.actionChevron}>›</Text>
         </TouchableOpacity>
 
-        {/* Incoming Requests */}
         <TouchableOpacity
           style={styles.actionCard}
           onPress={() => navigation.navigate('Incoming')}
           accessibilityRole="button"
-          accessibilityLabel={`Incoming requests${pendingCount > 0 ? `, ${pendingCount} pending` : ''}`}
+          accessibilityLabel="Incoming requests"
         >
           <View style={styles.actionIconWrap}>
             <Bell size={20} color="#111827" />
@@ -129,20 +101,12 @@ const MyPinScreen = ({ navigation }) => {
           <View style={styles.actionTextWrap}>
             <Text style={styles.actionTitle}>Incoming Requests</Text>
             <Text style={styles.actionSubtitle}>
-              {pendingCount > 0
-                ? `${pendingCount} pending request${pendingCount > 1 ? 's' : ''}`
-                : 'No pending requests'}
+              Check for pending requests
             </Text>
           </View>
-          {pendingCount > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{pendingCount}</Text>
-            </View>
-          )}
           <Text style={styles.actionChevron}>›</Text>
         </TouchableOpacity>
 
-        {/* My Connections */}
         <TouchableOpacity
           style={styles.actionCard}
           onPress={() => navigation.navigate('Connections')}
@@ -186,7 +150,6 @@ const styles = StyleSheet.create({
   logoutButton: {
     padding: 8,
   },
-  // PIN section
   pinSection: {
     paddingHorizontal: 24,
     paddingTop: 8,
@@ -211,7 +174,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingHorizontal: 8,
   },
-  // Actions
+  noPin: {
+    fontSize: 16,
+    color: '#9CA3AF',
+    marginTop: 12,
+  },
   actionsSection: {
     paddingHorizontal: 24,
     paddingTop: 24,

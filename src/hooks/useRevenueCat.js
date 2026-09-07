@@ -1,35 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import Purchases from 'react-native-purchases';
-import { doc, updateDoc, Timestamp } from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
+import { useAuth } from '@clerk/clerk-expo';
+import api, { authAPI } from '../utils/api';
 import {
   REVENUECAT_API_KEY,
   PREMIUM_ENTITLEMENT_ID,
 } from '../config/revenuecat';
 
-/**
- * useRevenueCat()
- *
- * Initialises the RevenueCat SDK, listens for customer info updates,
- * and syncs subscription state back to Firestore whenever it changes.
- *
- * Call this hook ONCE at the top of the app (inside SubscriptionContext).
- *
- * Returns:
- *   customerInfo      {object|null}  — raw RevenueCat CustomerInfo
- *   loading           {boolean}
- *   purchasePremium   {Function}     — triggers the native purchase sheet
- *   restorePurchases  {Function}     — restores previous purchases
- */
 const useRevenueCat = () => {
   const [customerInfo, setCustomerInfo] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { isSignedIn } = useAuth();
 
-  // ── Sync RevenueCat → Firestore ──────────────────────────────────────────
-  const syncToFirestore = useCallback(async (info) => {
-    const user = auth.currentUser;
-    if (!user) return;
-
+  // ── Sync RevenueCat → MongoDB via API ────────────────────────────────────
+  const syncToMongoDB = useCallback(async (info) => {
     try {
       const isPremium =
         info?.entitlements?.active?.[PREMIUM_ENTITLEMENT_ID] !== undefined;
@@ -38,14 +22,15 @@ const useRevenueCat = () => {
         info?.entitlements?.active?.[PREMIUM_ENTITLEMENT_ID]
           ?.expirationDate ?? null;
 
-      await updateDoc(doc(db, 'users', user.uid), {
-        subscription_status: isPremium ? 'premium' : 'free',
-        subscription_expires_at: expiresDate
-          ? Timestamp.fromDate(new Date(expiresDate))
-          : null,
-      });
+      await api.patch(
+        '/api/users/me',
+        {
+          subscription_status: isPremium ? 'premium' : 'free',
+          subscription_expires_at: expiresDate,
+        }
+      );
     } catch (error) {
-      console.error('useRevenueCat: Firestore sync error:', error);
+      console.error('useRevenueCat: MongoDB sync error:', error);
     }
   }, []);
 
@@ -57,26 +42,29 @@ const useRevenueCat = () => {
       try {
         Purchases.configure({ apiKey: REVENUECAT_API_KEY });
 
-        // Identify the user so their purchases are tied to their UID
-        const user = auth.currentUser;
-        if (user) {
-          await Purchases.logIn(user.uid);
+        if (isSignedIn) {
+          try {
+            const meRes = await authAPI.me();
+            if (meRes.data?.id) {
+              await Purchases.logIn(meRes.data.id);
+            }
+          } catch (e) {
+            console.warn('useRevenueCat: Could not logIn to RevenueCat', e);
+          }
         }
 
-        // Fetch initial customer info
         const info = await Purchases.getCustomerInfo();
         setCustomerInfo(info);
-        await syncToFirestore(info);
+        await syncToMongoDB(info);
       } catch (error) {
         console.error('useRevenueCat: Init error:', error);
       } finally {
         setLoading(false);
       }
 
-      // Listen for real-time updates (e.g., subscription renewal in background)
       listenerRef = Purchases.addCustomerInfoUpdateListener(async (info) => {
         setCustomerInfo(info);
-        await syncToFirestore(info);
+        await syncToMongoDB(info);
       });
     };
 
@@ -87,12 +75,11 @@ const useRevenueCat = () => {
         Purchases.removeCustomerInfoUpdateListener(listenerRef);
       }
     };
-  }, [syncToFirestore]);
+  }, [syncToMongoDB, isSignedIn]);
 
   // ── Purchase ─────────────────────────────────────────────────────────────
   const purchasePremium = useCallback(async () => {
     try {
-      // Fetch the default offering from RevenueCat
       const offerings = await Purchases.getOfferings();
       const pkg = offerings?.current?.availablePackages?.[0];
 
@@ -104,24 +91,23 @@ const useRevenueCat = () => {
 
       const { customerInfo: updatedInfo } = await Purchases.purchasePackage(pkg);
       setCustomerInfo(updatedInfo);
-      await syncToFirestore(updatedInfo);
+      await syncToMongoDB(updatedInfo);
       return { success: true };
     } catch (error) {
-      // PurchaseCancelledError has code 1 — user cancelled intentionally, not an error
       if (error.userCancelled) {
         return { success: false, cancelled: true };
       }
       console.error('useRevenueCat: Purchase error:', error);
       return { success: false, error: error.message };
     }
-  }, [syncToFirestore]);
+  }, [syncToMongoDB]);
 
   // ── Restore ──────────────────────────────────────────────────────────────
   const restorePurchases = useCallback(async () => {
     try {
       const info = await Purchases.restorePurchases();
       setCustomerInfo(info);
-      await syncToFirestore(info);
+      await syncToMongoDB(info);
 
       const isPremium =
         info?.entitlements?.active?.[PREMIUM_ENTITLEMENT_ID] !== undefined;
@@ -130,7 +116,7 @@ const useRevenueCat = () => {
       console.error('useRevenueCat: Restore error:', error);
       return { success: false, error: error.message };
     }
-  }, [syncToFirestore]);
+  }, [syncToMongoDB]);
 
   return { customerInfo, loading, purchasePremium, restorePurchases };
 };

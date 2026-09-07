@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
-import { generateUniquePin } from '../utils/pinGenerator';
+import { useSignUp } from '@clerk/clerk-expo';
 import InputField from '../components/InputField';
 import PrimaryButton from '../components/PrimaryButton';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { authAPI } from '../utils/api';
 
 const SignUpScreen = ({ navigation }) => {
+  const { signUp } = useSignUp();
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,35 +29,37 @@ const SignUpScreen = ({ navigation }) => {
     setError('');
 
     try {
-      // 1. Create Auth User
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      // 2. Generate unique PIN
-      const pin = await generateUniquePin();
-
-      // 3. Create Firestore User Document
-      await setDoc(doc(db, 'users', user.uid), {
-        id: user.uid,
-        name: name,
-        email: email,
-        pin: pin,
-        subscription_status: 'free',
-        subscription_expires_at: null,
-        createdAt: serverTimestamp(),
+      // 1. Create the Clerk user
+      const result = await signUp.create({
+        emailAddress: email,
+        password,
+        firstName: name.split(' ')[0],
+        lastName: name.split(' ').slice(1).join(' '),
       });
 
-      // No need to navigate manually, App.js auth listener will redirect if we set it up properly,
-      // but we might not have it setup yet so let's navigate to Main for safety (or it will happen automatically in App.js)
-
+      if (result.status === 'complete') {
+        // Sync to MongoDB (auto-creates user doc with PIN)
+        try {
+          await authAPI.syncUser();
+        } catch (syncErr) {
+          console.warn('MongoDB sync warning:', syncErr);
+        }
+      } else {
+        console.warn('Sign up incomplete:', result.status);
+      }
     } catch (e) {
       console.error('Sign up error', e);
-      if (e.code === 'auth/email-already-in-use') {
+      if (e.errors?.[0]?.code === 'form_identifier_in_use' ||
+          e.errors?.[0]?.code === 'email_address_already_exists' ||
+          e.errors?.[0]?.code === 'form_identifier_exists') {
         setError('This email is already in use.');
-      } else if (e.code === 'auth/invalid-email') {
+      } else if (e.errors?.[0]?.code === 'form_password_length_too_short') {
+        setError('Password must be at least 6 characters.');
+      } else if (e.errors?.[0]?.code === 'form_email_address_invalid' ||
+                 e.errors?.[0]?.code === 'form_email_address_invalid_format') {
         setError('Invalid email address.');
       } else {
-        setError(e.message || 'Failed to sign up.');
+        setError(e.errors?.[0]?.message || e.message || 'Failed to sign up.');
       }
     } finally {
       setLoading(false);
@@ -77,8 +79,8 @@ const SignUpScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.content}>
@@ -113,9 +115,9 @@ const SignUpScreen = ({ navigation }) => {
           />
 
           <View style={styles.buttonContainer}>
-            <PrimaryButton 
-              title={loading ? "Creating account..." : "Sign Up"} 
-              onPress={handleSignUp} 
+            <PrimaryButton
+              title={loading ? "Creating account..." : "Sign Up"}
+              onPress={handleSignUp}
             />
           </View>
 
