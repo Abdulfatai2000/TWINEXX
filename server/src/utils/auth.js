@@ -1,5 +1,6 @@
 const { verifyToken } = require('@clerk/backend');
 const User = require('../models/User');
+const { SKIP_DB_TEMP } = require('../config/flags');
 
 // ── Generate a unique 6-digit PIN ───────────────────────────────────────────
 const generateRandomPin = () => {
@@ -57,6 +58,19 @@ const authenticate = async (req, res, next) => {
 
 // ── Get or create the MongoDB user for the authenticated Clerk user ─────────
 const ensureUser = async (clerkUserId) => {
+  if (SKIP_DB_TEMP) {
+    return {
+      _id: 'temp-mock-id',
+      clerkId: clerkUserId,
+      name: 'Test User',
+      email: 'test@example.com',
+      pin: '123456',
+      subscription_status: 'free',
+      subscription_expires_at: null,
+      createdAt: new Date(),
+    };
+  }
+
   let user = await User.findOne({ clerkId: clerkUserId });
 
   if (user) {

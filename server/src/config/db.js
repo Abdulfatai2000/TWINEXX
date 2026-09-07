@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
+const { SKIP_DB_TEMP } = require('./flags');
 
 const connectDB = async () => {
+  if (SKIP_DB_TEMP) {
+    console.warn('⚠️ Running with DB connection SKIPPED (SKIP_DB_TEMP=true) — using mock data, nothing persists.');
+    return;
+  }
+
   try {
     const uri = process.env.MONGODB_URI;
     if (!uri) {
