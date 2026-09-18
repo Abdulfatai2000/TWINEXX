@@ -1,40 +1,51 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, FlatList, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
-import { taskAPI } from '../utils/api';
+import { useAuth } from '@clerk/clerk-expo';
+import { TaskService } from '../services';
+import { isLocalMode } from '../config/dev';
 import TaskItem from '../components/TaskItem';
 import PrimaryButton from '../components/PrimaryButton';
 import { Plus } from 'lucide-react-native';
 
 const HomeScreen = () => {
+  const { userId, isSignedIn } = useAuth();
   const [tasks, setTasks] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDesc, setNewTaskDesc] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchTasks = async () => {
-      try {
-        const res = await taskAPI.list();
-        setTasks(res.data);
-      } catch (error) {
-        console.error('HomeScreen: Error fetching tasks:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchTasks();
-  }, []);
-
-  const handleAddTask = async () => {
-    if (!newTaskTitle.trim()) return;
+  const fetchTasks = async () => {
+    if (!isSignedIn || !userId) {
+      setTasks([]);
+      setLoading(false);
+      return;
+    }
 
     try {
-      const res = await taskAPI.create({
+      const userTasks = await TaskService.getTasks(userId);
+      setTasks(userTasks);
+    } catch (error) {
+      console.error('HomeScreen: Error fetching tasks:', error);
+      setTasks([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTasks();
+  }, [userId, isSignedIn]);
+
+  const handleAddTask = async () => {
+    if (!newTaskTitle.trim() || !userId) return;
+
+    try {
+      const task = await TaskService.createTask(userId, {
         title: newTaskTitle.trim(),
         description: newTaskDesc.trim(),
       });
-      setTasks((prev) => [res.data, ...prev]);
+      setTasks((prev) => [task, ...prev]);
       setNewTaskTitle('');
       setNewTaskDesc('');
       setModalVisible(false);
@@ -45,11 +56,13 @@ const HomeScreen = () => {
   };
 
   const handleToggleStatus = async (taskId, currentStatus) => {
+    if (!userId) return;
+
     try {
       const newStatus = currentStatus === 'done' ? 'pending' : 'done';
-      const res = await taskAPI.update(taskId, { status: newStatus });
+      const updatedTask = await TaskService.updateTask(userId, taskId, { status: newStatus });
       setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? res.data : t))
+        prev.map((t) => (t.id === taskId ? updatedTask : t))
       );
     } catch (error) {
       console.error('HomeScreen: Error toggling task:', error);
@@ -57,6 +70,8 @@ const HomeScreen = () => {
   };
 
   const handleDeleteTask = async (taskId) => {
+    if (!userId) return;
+
     Alert.alert(
       'Delete Task',
       'Are you sure you want to delete this task?',
@@ -67,7 +82,7 @@ const HomeScreen = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await taskAPI.remove(taskId);
+              await TaskService.deleteTask(userId, taskId);
               setTasks((prev) => prev.filter((t) => t.id !== taskId));
             } catch (error) {
               console.error('HomeScreen: Error deleting task:', error);

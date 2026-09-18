@@ -9,19 +9,27 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { useAuth } from '@clerk/clerk-expo';
 import { UserCheck, UserX } from 'lucide-react-native';
-import { connectionAPI } from '../utils/connectionsApi';
+import { ConnectionService } from '../services';
 
 const IncomingScreen = () => {
+  const { userId, isSignedIn } = useAuth();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actioningId, setActioningId] = useState(null);
 
   useEffect(() => {
     const fetchPending = async () => {
+      if (!isSignedIn || !userId) {
+        setRequests([]);
+        setLoading(false);
+        return;
+      }
+
       try {
-        const res = await connectionAPI.pending();
-        setRequests(res.data);
+        const pendingRequests = await ConnectionService.getIncomingRequests(userId);
+        setRequests(pendingRequests);
       } catch (error) {
         console.error('IncomingScreen: Error fetching pending:', error);
       } finally {
@@ -29,12 +37,12 @@ const IncomingScreen = () => {
       }
     };
     fetchPending();
-  }, []);
+  }, [userId, isSignedIn]);
 
   const handleApprove = async (connectionId) => {
     setActioningId(connectionId);
     try {
-      await connectionAPI.update(connectionId, 'active');
+      await ConnectionService.approveRequest(userId, connectionId);
       setRequests((prev) => prev.filter((r) => r.id !== connectionId));
     } catch (error) {
       console.error('IncomingScreen: approve error:', error);
@@ -56,7 +64,7 @@ const IncomingScreen = () => {
           onPress: async () => {
             setActioningId(connectionId);
             try {
-              await connectionAPI.update(connectionId, 'declined');
+              await ConnectionService.declineRequest(userId, connectionId);
               setRequests((prev) => prev.filter((r) => r.id !== connectionId));
             } catch (error) {
               console.error('IncomingScreen: decline error:', error);

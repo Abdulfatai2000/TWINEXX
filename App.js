@@ -20,6 +20,9 @@ import HomeScreen from './src/screens/HomeScreen';
 import MyPinScreen from './src/screens/MyPinScreen';
 import SubscriptionScreen from './src/screens/SubscriptionScreen';
 import PaywallScreen from './src/screens/PaywallScreen';
+import ConnectScreen from './src/screens/ConnectScreen';
+import IncomingScreen from './src/screens/IncomingScreen';
+import ConnectionsScreen from './src/screens/ConnectionsScreen';
 
 // Subscription context
 import { SubscriptionProvider } from './src/context/SubscriptionContext';
@@ -86,6 +89,9 @@ const AppStack = () => (
         animation: 'slide_from_bottom',
       }}
     />
+    <Stack.Screen name="Connect" component={ConnectScreen} />
+    <Stack.Screen name="Incoming" component={IncomingScreen} />
+    <Stack.Screen name="Connections" component={ConnectionsScreen} />
   </Stack.Navigator>
 );
 

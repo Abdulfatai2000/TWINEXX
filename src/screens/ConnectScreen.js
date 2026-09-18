@@ -12,18 +12,21 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { useAuth } from '@clerk/clerk-expo';
 import { UserPlus, AlertCircle } from 'lucide-react-native';
 import { useSubscription } from '../context/SubscriptionContext';
-import { connectionAPI } from '../utils/connectionsApi';
-
-// TEMP FLAG — Phase 3 RevenueCat sandbox not yet set up.
-const SKIP_PREMIUM_CHECK_TEMP = true;
+import { ConnectionService, registerLocalUser } from '../services';
+import { isDevelopmentSubscriptionMode, DEV_FLAGS } from '../config/dev';
 
 const ConnectScreen = ({ navigation }) => {
+  const { userId, isSignedIn } = useAuth();
   const { isPremium } = useSubscription();
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // In development subscription mode, simulate premium
+  const effectiveIsPremium = isDevelopmentSubscriptionMode() ? true : isPremium;
 
   const handleConnect = async () => {
     const trimmedPin = pin.trim().toUpperCase();
@@ -32,16 +35,32 @@ const ConnectScreen = ({ navigation }) => {
       return;
     }
 
+    if (!userId || !isSignedIn) {
+      setError('Please log in to connect with a partner.');
+      return;
+    }
+
+    // Premium gate - in development mode, always allow
+    if (!effectiveIsPremium) {
+      setError('Premium subscription required to connect with a partner.');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
-      const res = await connectionAPI.create(trimmedPin);
-      const data = res.data;
+      // Get user's name for the request
+      const { UserProfileService } = await import('../services');
+      const profile = await UserProfileService.getProfile(userId);
+      const userName = profile?.name || 'Unknown';
 
-      if (!SKIP_PREMIUM_CHECK_TEMP) {
-        // Premium gate would go here (check target's subscription_status)
-      }
+      // Register current user in local registry
+      const { PinService } = await import('../services');
+      const myPin = await PinService.getPin(userId);
+      registerLocalUser(userId, userName, myPin);
+
+      const data = await ConnectionService.sendConnectionRequest(userId, userName, trimmedPin);
 
       Alert.alert(
         'Request Sent!',
@@ -58,10 +77,10 @@ const ConnectScreen = ({ navigation }) => {
       );
     } catch (err) {
       console.error('ConnectScreen: handleConnect error', err);
-      if (err.response?.status === 404) {
-        setError('No user found with that PIN. Check the PIN and try again.');
-      } else if (err.response?.status === 400) {
-        setError(err.response.data.error || 'Could not send request.');
+      if (err.message?.includes('PIN')) {
+        setError(err.message);
+      } else if (err.message?.includes('connection') || err.message?.includes('pending')) {
+        setError(err.message);
       } else {
         setError('Something went wrong. Please try again.');
       }
@@ -105,7 +124,7 @@ const ConnectScreen = ({ navigation }) => {
             <Text style={styles.inputLabel}>Partner's PIN</Text>
             <TextInput
               style={styles.pinInput}
-              placeholder="e.g. A3X9K2"
+              placeholder="e.g. 123456"
               placeholderTextColor="#9CA3AF"
               value={pin}
               onChangeText={(text) => {
@@ -114,7 +133,7 @@ const ConnectScreen = ({ navigation }) => {
               }}
               autoCapitalize="characters"
               autoCorrect={false}
-              maxLength={8}
+              maxLength={6}
               returnKeyType="done"
               onSubmitEditing={handleConnect}
               accessibilityLabel="Partner PIN input"
@@ -128,10 +147,10 @@ const ConnectScreen = ({ navigation }) => {
             )}
           </View>
 
-          {SKIP_PREMIUM_CHECK_TEMP && (
+          {DEV_FLAGS.SHOW_DEV_BADGES && isDevelopmentSubscriptionMode() && (
             <View style={styles.devNotice}>
               <Text style={styles.devNoticeText}>
-                DEV: Premium check bypassed (SKIP_PREMIUM_CHECK_TEMP = true)
+                DEV MODE: Premium bypassed for testing
               </Text>
             </View>
           )}

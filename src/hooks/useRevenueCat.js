@@ -6,15 +6,23 @@ import {
   REVENUECAT_API_KEY,
   PREMIUM_ENTITLEMENT_ID,
 } from '../config/revenuecat';
+import {
+  DEV_SIMULATE_PREMIUM,
+  isDevelopmentSubscriptionMode,
+  isLocalMode,
+} from '../config/dev';
 
 const useRevenueCat = () => {
   const [customerInfo, setCustomerInfo] = useState(null);
   const [loading, setLoading] = useState(true);
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, userId } = useAuth();
 
-  // ── Sync RevenueCat → MongoDB via API ────────────────────────────────────
   const syncToMongoDB = useCallback(async (info) => {
     try {
+      if (isLocalMode() || isDevelopmentSubscriptionMode()) {
+        return;
+      }
+
       const isPremium =
         info?.entitlements?.active?.[PREMIUM_ENTITLEMENT_ID] !== undefined;
 
@@ -34,12 +42,21 @@ const useRevenueCat = () => {
     }
   }, []);
 
-  // ── SDK init + listener ──────────────────────────────────────────────────
   useEffect(() => {
     let listenerRef = null;
 
     const init = async () => {
       try {
+        if (isLocalMode() || isDevelopmentSubscriptionMode()) {
+          setCustomerInfo({
+            entitlements: {
+              active: DEV_SIMULATE_PREMIUM ? { premium: { expirationDate: null } } : {},
+            },
+          });
+          setLoading(false);
+          return;
+        }
+
         Purchases.configure({ apiKey: REVENUECAT_API_KEY });
 
         if (isSignedIn) {
@@ -75,11 +92,14 @@ const useRevenueCat = () => {
         Purchases.removeCustomerInfoUpdateListener(listenerRef);
       }
     };
-  }, [syncToMongoDB, isSignedIn]);
+  }, [syncToMongoDB, isSignedIn, userId]);
 
-  // ── Purchase ─────────────────────────────────────────────────────────────
   const purchasePremium = useCallback(async () => {
     try {
+      if (isLocalMode() || isDevelopmentSubscriptionMode()) {
+        return { success: true, isPremium: true };
+      }
+
       const offerings = await Purchases.getOfferings();
       const pkg = offerings?.current?.availablePackages?.[0];
 
@@ -102,9 +122,12 @@ const useRevenueCat = () => {
     }
   }, [syncToMongoDB]);
 
-  // ── Restore ──────────────────────────────────────────────────────────────
   const restorePurchases = useCallback(async () => {
     try {
+      if (isLocalMode() || isDevelopmentSubscriptionMode()) {
+        return { success: true, isPremium: true };
+      }
+
       const info = await Purchases.restorePurchases();
       setCustomerInfo(info);
       await syncToMongoDB(info);

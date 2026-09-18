@@ -11,19 +11,27 @@ import {
 import { useAuth } from '@clerk/clerk-expo';
 import { LogOut, UserPlus, Users, Bell } from 'lucide-react-native';
 import PinDisplay from '../components/PinDisplay';
-import { authAPI } from '../utils/api';
+import { PinService, registerLocalUser } from '../services';
+import { isLocalMode } from '../config/dev';
 
 const MyPinScreen = ({ navigation }) => {
-  const { signOut } = useAuth();
+  const { signOut, userId, isSignedIn } = useAuth();
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Fetch this user's PIN from MongoDB via the API
+  // Fetch this user's PIN from local storage
   useEffect(() => {
     const fetchPin = async () => {
+      if (!isSignedIn || !userId) {
+        setPin('');
+        setLoading(false);
+        return;
+      }
+
       try {
-        const res = await authAPI.me();
-        setPin(res.data.pin);
+        // Register user in local mock registry for cross-user PIN lookup
+        const profile = await PinService.getPin(userId);
+        setPin(profile);
       } catch (error) {
         console.error('MyPinScreen: Error fetching PIN:', error);
       } finally {
@@ -31,7 +39,7 @@ const MyPinScreen = ({ navigation }) => {
       }
     };
     fetchPin();
-  }, []);
+  }, [userId, isSignedIn]);
 
   const handleLogout = async () => {
     try {

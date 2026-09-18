@@ -1,6 +1,7 @@
 import React, { createContext, useContext } from 'react';
 import useRevenueCat from '../hooks/useRevenueCat';
 import useIsPremium from '../hooks/useIsPremium';
+import { isDevelopmentSubscriptionMode, isLocalMode } from '../config/dev';
 
 /**
  * SubscriptionContext
@@ -30,7 +31,11 @@ export const SubscriptionProvider = ({ children }) => {
   } = useRevenueCat();
 
   // MongoDB-backed isPremium (via Express API)
-  const { isPremium, expiresAt, loading: premiumLoading } = useIsPremium();
+  const { isPremium: remoteIsPremium, expiresAt, loading: premiumLoading } =
+    useIsPremium();
+
+  const localMode = isLocalMode() || isDevelopmentSubscriptionMode();
+  const isPremium = localMode ? remoteIsPremium || localMode : remoteIsPremium;
 
   return (
     <SubscriptionContext.Provider

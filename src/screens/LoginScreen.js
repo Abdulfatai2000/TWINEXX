@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { useSignIn } from '@clerk/clerk-expo';
+import { useSignIn, useAuth } from '@clerk/clerk-expo';
 import InputField from '../components/InputField';
 import PrimaryButton from '../components/PrimaryButton';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { UserProfileService, registerLocalUser, PinService } from '../services';
+import { isLocalMode, isDevelopmentSubscriptionMode } from '../config/dev';
 
 const LoginScreen = ({ navigation }) => {
   const { signIn } = useSignIn();
+  const { userId } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,15 +31,30 @@ const LoginScreen = ({ navigation }) => {
       });
 
       if (result.status === 'complete') {
-        // Session is established; ClerkProvider will re-render App.js
-        // and the AuthStateHandler will switch to AppStack.
+        // In local dev mode, ensure user profile is set up
+        if ((isLocalMode() || isDevelopmentSubscriptionMode()) && userId) {
+          try {
+            let profile = await UserProfileService.getProfile(userId);
+            if (!profile) {
+              profile = {
+                name: email.split('@')[0],
+                email: email.trim(),
+                subscriptionStatus: 'free',
+                subscriptionExpiresAt: null,
+              };
+              await UserProfileService.setProfile(userId, profile);
+            }
+            const pin = await PinService.getPin(userId);
+            registerLocalUser(userId, profile.name, pin);
+          } catch (localErr) {
+            console.warn('Local profile setup warning on login:', localErr);
+          }
+        }
       } else {
-        // E.g. requires MFA or email verification — handle if needed
         console.warn('Login incomplete:', result.status);
       }
     } catch (e) {
       console.error('Login error', e);
-      // Clerk error codes differ from Firebase; show a generic message
       if (e.errors?.[0]?.code === 'form_identifier_unrecognized' ||
           e.errors?.[0]?.code === 'form_password_incorrect') {
         setError('Invalid email or password.');

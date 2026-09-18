@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { useSignUp } from '@clerk/clerk-expo';
+import { useSignUp, useAuth } from '@clerk/clerk-expo';
 import InputField from '../components/InputField';
 import PrimaryButton from '../components/PrimaryButton';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI } from '../utils/api';
+import { UserProfileService, registerLocalUser, PinService } from '../services';
+import { isLocalMode, isDevelopmentSubscriptionMode } from '../config/dev';
 
 const SignUpScreen = ({ navigation }) => {
   const { signUp } = useSignUp();
+  const { userId } = useAuth();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -38,11 +41,32 @@ const SignUpScreen = ({ navigation }) => {
       });
 
       if (result.status === 'complete') {
-        // Sync to MongoDB (auto-creates user doc with PIN)
-        try {
-          await authAPI.syncUser();
-        } catch (syncErr) {
-          console.warn('MongoDB sync warning:', syncErr);
+        // In local dev mode, store user profile locally
+        if (isLocalMode() || isDevelopmentSubscriptionMode()) {
+          try {
+            const profile = {
+              name: name.trim(),
+              email: email.trim(),
+              subscriptionStatus: 'free',
+              subscriptionExpiresAt: null,
+            };
+
+            // Store profile locally using the authenticated user ID
+            if (userId) {
+              await UserProfileService.setProfile(userId, profile);
+              const pin = await PinService.getPin(userId);
+              registerLocalUser(userId, name, pin);
+            }
+          } catch (localErr) {
+            console.warn('Local profile setup warning:', localErr);
+          }
+        } else {
+          // Sync to MongoDB (auto-creates user doc with PIN)
+          try {
+            await authAPI.syncUser();
+          } catch (syncErr) {
+            console.warn('MongoDB sync warning:', syncErr);
+          }
         }
       } else {
         console.warn('Sign up incomplete:', result.status);
