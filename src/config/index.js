@@ -1,15 +1,18 @@
 /**
  * TWINEX Configuration
  *
- * ⚠️ PLACEHOLDER — Replace with your real values before building:
- *   - CLERK_PUBLISHABLE_KEY: from Clerk dashboard → API keys → Publishable key
- *   - API_BASE_URL: your Render deployment URL (e.g. https://twinex-server.onrender.com)
- *     For local dev, use http://localhost:3000
- *     For Expo Go/emulator, use your machine's LAN IP (e.g. http://192.168.1.10:3000)
+ * Environment variables are loaded from .env.local
+ * See .env.example for required configuration
  */
 
-export const CLERK_PUBLISHABLE_KEY =
-  'pk_test_c29jaWFsLWNhdHRsZS00NDkuY2xlcmsuYWNjb3VudHMuZGV2JA';
+export const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+if (!CLERK_PUBLISHABLE_KEY) {
+  throw new Error(
+    'EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is not set. ' +
+    'Create a .env.local file and add your Clerk Publishable Key from https://dashboard.clerk.com/~/api-keys'
+  );
+}
 
 // ⚠️ Replace with your backend API URL
 // Local dev: 'http://localhost:3000'

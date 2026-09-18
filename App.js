@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, Text, Platform } from 'react-native';
 import { ClerkProvider, useAuth, useSession } from '@clerk/clerk-expo';
 import { ListTodo, KeyRound, Crown } from 'lucide-react-native';
 
@@ -134,11 +134,44 @@ const TokenSyncer = ({ children }) => {
 // ── Auth State Handler ────────────────────────────────────────────────────
 const AuthStateHandler = ({ initialAuthRoute }) => {
   const { isSignedIn, isLoaded } = useAuth();
+  const [clerkError, setClerkError] = useState(null);
+
+  useEffect(() => {
+    // Safety timeout: if Clerk doesn't load within 10 seconds, show helpful error
+    const timer = setTimeout(() => {
+      if (!isLoaded) {
+        setClerkError(
+          'Clerk initialization timeout. This may indicate a network issue or misconfigured Clerk key. Check the browser console for details.'
+        );
+      }
+    }, 10000);
+
+    return () => clearTimeout(timer);
+  }, [isLoaded]);
+
+  if (clerkError) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF', paddingHorizontal: 24 }}>
+        <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#000000', marginBottom: 12, textAlign: 'center' }}>
+          Authentication Error
+        </Text>
+        <Text style={{ fontSize: 14, color: '#4B5563', lineHeight: 22, textAlign: 'center', marginBottom: 24 }}>
+          {clerkError}
+        </Text>
+        <Text style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center' }}>
+          Please check your CLERK_PUBLISHABLE_KEY in src/config/index.js
+        </Text>
+      </View>
+    );
+  }
 
   if (!isLoaded) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' }}>
         <ActivityIndicator size="large" color="#000000" />
+        <Text style={{ marginTop: 16, fontSize: 12, color: '#9CA3AF' }}>
+          Initializing Clerk...
+        </Text>
       </View>
     );
   }
@@ -172,6 +205,23 @@ export default function App() {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' }}>
         <ActivityIndicator size="large" color="#000000" />
+      </View>
+    );
+  }
+
+  // Validation: Check if Clerk publishable key is present and not a placeholder
+  if (!CLERK_PUBLISHABLE_KEY || CLERK_PUBLISHABLE_KEY.includes('PLACEHOLDER')) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF', paddingHorizontal: 24 }}>
+        <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#EF4444', marginBottom: 12, textAlign: 'center' }}>
+          Missing Clerk Configuration
+        </Text>
+        <Text style={{ fontSize: 14, color: '#4B5563', lineHeight: 22, textAlign: 'center' }}>
+          CLERK_PUBLISHABLE_KEY is not configured or contains a placeholder.
+        </Text>
+        <Text style={{ fontSize: 12, color: '#9CA3AF', marginTop: 24, textAlign: 'center' }}>
+          Update src/config/index.js with your real Clerk publishable key from the Clerk Dashboard.
+        </Text>
       </View>
     );
   }
