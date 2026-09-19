@@ -5,6 +5,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActivityIndicator, View, Text, Platform } from 'react-native';
 import { ClerkProvider, useAuth, useSession } from '@clerk/clerk-expo';
+import { tokenCache } from '@clerk/expo/token-cache';
 import { ListTodo, KeyRound, Crown } from 'lucide-react-native';
 
 // Onboarding & Auth Screens
@@ -137,14 +138,15 @@ const AuthStateHandler = ({ initialAuthRoute }) => {
   const [clerkError, setClerkError] = useState(null);
 
   useEffect(() => {
-    // Safety timeout: if Clerk doesn't load within 10 seconds, show helpful error
+    // Safety timeout: if Clerk doesn't load within 15 seconds, show helpful error
     const timer = setTimeout(() => {
       if (!isLoaded) {
         setClerkError(
-          'Clerk initialization timeout. This may indicate a network issue or misconfigured Clerk key. Check the browser console for details.'
+          'Clerk initialization timeout. This may indicate a network issue. ' +
+          'Ensure EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is set in .env.local and check the browser console for details.'
         );
       }
-    }, 10000);
+    }, 15000);
 
     return () => clearTimeout(timer);
   }, [isLoaded]);
@@ -159,7 +161,7 @@ const AuthStateHandler = ({ initialAuthRoute }) => {
           {clerkError}
         </Text>
         <Text style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center' }}>
-          Please check your CLERK_PUBLISHABLE_KEY in src/config/index.js
+          Check that EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is set in .env.local
         </Text>
       </View>
     );
@@ -209,25 +211,25 @@ export default function App() {
     );
   }
 
-  // Validation: Check if Clerk publishable key is present and not a placeholder
-  if (!CLERK_PUBLISHABLE_KEY || CLERK_PUBLISHABLE_KEY.includes('PLACEHOLDER')) {
+  // Validation: Check if Clerk publishable key is present
+  if (!CLERK_PUBLISHABLE_KEY) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF', paddingHorizontal: 24 }}>
         <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#EF4444', marginBottom: 12, textAlign: 'center' }}>
           Missing Clerk Configuration
         </Text>
         <Text style={{ fontSize: 14, color: '#4B5563', lineHeight: 22, textAlign: 'center' }}>
-          CLERK_PUBLISHABLE_KEY is not configured or contains a placeholder.
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is not set.
         </Text>
         <Text style={{ fontSize: 12, color: '#9CA3AF', marginTop: 24, textAlign: 'center' }}>
-          Update src/config/index.js with your real Clerk publishable key from the Clerk Dashboard.
+          Create a .env.local file with your Clerk Publishable Key from the Clerk Dashboard.
         </Text>
       </View>
     );
   }
 
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
       <TokenSyncer>
         <SubscriptionProvider>
           <NavigationContainer>

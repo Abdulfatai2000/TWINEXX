@@ -24,6 +24,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store",
-      "@clerk/expo"
+      "expo-secure-store"
     ]
+  }
+}
